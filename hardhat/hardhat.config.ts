@@ -30,6 +30,11 @@ export default defineConfig({
       type: "edr-simulated",
       chainType: "l1",
     },
+    localhost: {
+      type: "http",
+      chainType: "l1",
+      url: "http://127.0.0.1:8545",
+    },
     // Ritual Chain testnet. Requires EIP-1559 (type-2) transactions; viem sends
     // those by default.
     ritual: {

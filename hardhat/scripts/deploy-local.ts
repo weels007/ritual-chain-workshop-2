@@ -1,13 +1,17 @@
 /**
- * Deploy RitualPredict to a local Hardhat node with mock system contracts.
+ * Deploy RitualPredict with mock system contracts for local testing.
+ * Uses EDR-simulated network (hardhatMainnet).
  *
- *   Terminal 1:  npx hardhat node
- *   Terminal 2:  npx hardhat run scripts/deploy-local.ts --network localhost
+ *   npx hardhat run scripts/deploy-local.ts
  */
 import { network } from "hardhat";
-import { parseEther } from "viem";
+import { parseEther, type Address } from "viem";
 
-const { connection, viem } = await network.create({ network: "hardhatMainnet", chainType: "l1" });
+const SCHEDULER_ADDR = "0x56e776BAE2DD60664b69Bd5F865F1180ffB7D58B" as Address;
+const RITUAL_WALLET_ADDR = "0x532F0dF0896F353d8C3DD8cc134e8129DA2a3948" as Address;
+const TEE_REGISTRY_ADDR = "0x9644e8562cE0Fe12b4deeC4163c064A8862Bf47F" as Address;
+
+const { connection, viem } = await network.create();
 const [wallet] = await viem.getWalletClients();
 const publicClient = await viem.getPublicClient();
 const deployer = wallet.account.address;
@@ -15,42 +19,36 @@ const deployer = wallet.account.address;
 console.log("── Deployer ──────────────────────────────────────────────");
 console.log(`Address:   ${deployer}`);
 const balance = await publicClient.getBalance({ address: deployer });
-console.log(`Balance:   ${formatEth(balance)} ETH`);
+console.log(`Balance:   ${(Number(balance) / 1e18).toFixed(4)} ETH`);
 
-console.log("\n── Deploy Mock System Contracts ───────────────────────────");
+console.log("\n── Deploy Mock Contracts (extract bytecode) ───────────────");
 
-const scheduler = await viem.deployContract("MockScheduler", [], { account: deployer });
-console.log(`MockScheduler:       ${scheduler.address}`);
+const tempScheduler = await viem.deployContract("MockScheduler", [], { account: deployer });
+const schedulerCode = await publicClient.getCode({ address: tempScheduler.address });
 
-const ritualWallet = await viem.deployContract("MockRitualWallet", [], { account: deployer });
-console.log(`MockRitualWallet:    ${ritualWallet.address}`);
+const tempWallet = await viem.deployContract("MockRitualWallet", [], { account: deployer });
+const walletCode = await publicClient.getCode({ address: tempWallet.address });
 
-const teeRegistry = await viem.deployContract("MockTEEServiceRegistry", [], { account: deployer });
-console.log(`MockTEEServiceReg:   ${teeRegistry.address}`);
+const tempTee = await viem.deployContract("MockTEEServiceRegistry", [], { account: deployer });
+const teeCode = await publicClient.getCode({ address: tempTee.address });
+
+console.log("── Set Code at Ritual Chain Addresses ────────────────────");
+
+await publicClient.request({ method: "hardhat_setCode" as any, params: [SCHEDULER_ADDR, schedulerCode] } as any);
+await publicClient.request({ method: "hardhat_setCode" as any, params: [RITUAL_WALLET_ADDR, walletCode] } as any);
+await publicClient.request({ method: "hardhat_setCode" as any, params: [TEE_REGISTRY_ADDR, teeCode] } as any);
+console.log("System contracts deployed ✓");
 
 console.log("\n── Deploy RitualPredict ───────────────────────────────────");
 
-// Use 195ms block time (Ritual Chain average)
-const blockTimeMs = 195n;
-const predict = await viem.deployContract("RitualPredict", [blockTimeMs], { account: deployer });
-console.log(`RitualPredict:       ${predict.address}`);
+const predict = await viem.deployContract("RitualPredict", [195n], { account: deployer });
+console.log(`RitualPredict:  ${predict.address}`);
 
-// Prepay execution fees
-const funding = parseEther("1.0");
-const fundHash = await predict.write.fundExecution([500_000n], { value: funding });
+const fundHash = await predict.write.fundExecution([500_000n], { value: parseEther("1.0") });
 await publicClient.waitForTransactionReceipt({ hash: fundHash });
-const execBalance = await predict.read.executionBalance();
-console.log(`Execution balance:   ${formatEth(execBalance)} ETH`);
+console.log(`Funded:         ${(Number(await predict.read.executionBalance()) / 1e18).toFixed(4)} ETH`);
 
-console.log("\n── Summary ────────────────────────────────────────────────");
-console.log(`Copy this to web/.env.local:`);
+console.log("\n── Done ───────────────────────────────────────────────────");
 console.log(`NEXT_PUBLIC_PREDICT_ADDRESS=${predict.address}`);
 
-console.log(`\nOr run create-demo-market:`);
-console.log(`PREDICT_ADDRESS=${predict.address} ORACLE_URL=http://localhost:3000/api/oracle/eth npx hardhat run scripts/create-demo-market.ts --network localhost`);
-
 await connection.close();
-
-function formatEth(wei: bigint): string {
-  return (Number(wei) / 1e18).toFixed(4);
-}
