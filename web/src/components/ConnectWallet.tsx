@@ -3,22 +3,23 @@
 import { useState, useEffect, useCallback } from "react";
 import { EXPLORER_URL, FAUCET_URL } from "@/lib/config";
 import { connectWallet, getPublicClient } from "@/lib/actions";
-import { predictAbi } from "@/lib/predict-abi";
-import { PREDICT_ADDRESS } from "@/lib/config";
 
 export default function ConnectWallet({
   onConnect,
 }: {
-  onConnect: (address: `0x${string}`) => void;
-}) {
+  onConnect?: (address: `0x${string}`) => void;
+} = {}) {
   const [address, setAddress] = useState<`0x${string}` | null>(null);
-  const [balance, setBalance] = useState<string>("0");
+  const [balance, setBalance] = useState("0");
   const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const refreshBalance = useCallback(async (addr: `0x${string}`) => {
-    const client = getPublicClient();
-    const bal = await client.getBalance({ address: addr });
-    setBalance((Number(bal) / 1e18).toFixed(2));
+    try {
+      const client = getPublicClient();
+      const bal = await client.getBalance({ address: addr });
+      setBalance((Number(bal) / 1e18).toFixed(2));
+    } catch {}
   }, []);
 
   const handleConnect = async () => {
@@ -28,12 +29,25 @@ export default function ConnectWallet({
       if (result) {
         setAddress(result.address);
         await refreshBalance(result.address);
-        onConnect(result.address);
+        onConnect?.(result.address);
       }
     } catch (err) {
       console.error("Connect failed:", err);
     }
     setLoading(false);
+  };
+
+  const handleDisconnect = () => {
+    setAddress(null);
+    setBalance("0");
+  };
+
+  const copyAddress = () => {
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   useEffect(() => {
@@ -43,24 +57,32 @@ export default function ConnectWallet({
       const addr = ethereum.selectedAddress as `0x${string}`;
       setAddress(addr);
       refreshBalance(addr);
-      onConnect(addr);
+      onConnect?.(addr);
     }
   }, []);
 
   if (address) {
     return (
-      <div className="flex items-center gap-3">
-        <div className="text-right text-sm">
-          <div className="text-green-400 font-mono">
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface border border-border">
+          <div className="w-2 h-2 rounded-full bg-yes animate-pulse" />
+          <button
+            onClick={copyAddress}
+            className="text-sm font-mono text-foreground cursor-pointer hover:text-brand transition-colors"
+            title="Click to copy"
+          >
             {address.slice(0, 6)}...{address.slice(-4)}
-          </div>
-          <div className="text-gray-400">{balance} RITUAL</div>
+          </button>
+          <span className="text-xs text-muted border-l border-border pl-2">
+            {balance} ETH
+          </span>
         </div>
         <a
           href={FAUCET_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 rounded"
+          className="p-2 rounded-lg bg-surface border border-border text-muted hover:text-brand hover:border-brand/30 transition-all text-xs"
+          title="Get test ETH"
         >
           Faucet
         </a>
@@ -68,7 +90,8 @@ export default function ConnectWallet({
           href={`${EXPLORER_URL}/address/${address}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="px-3 py-1 text-xs bg-gray-700 hover:bg-gray-600 rounded"
+          className="p-2 rounded-lg bg-surface border border-border text-muted hover:text-brand hover:border-brand/30 transition-all text-xs"
+          title="View on explorer"
         >
           Explorer
         </a>
@@ -80,9 +103,34 @@ export default function ConnectWallet({
     <button
       onClick={handleConnect}
       disabled={loading}
-      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-600 rounded font-medium transition-colors"
+      className="px-5 py-2.5 bg-brand hover:bg-brand-dim disabled:bg-surface-light text-white text-sm font-semibold rounded-lg transition-all hover:shadow-lg hover:shadow-brand/20"
     >
-      {loading ? "Connecting..." : "Connect Wallet"}
+      {loading ? (
+        <span className="flex items-center gap-2">
+          <svg
+            className="w-4 h-4 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+            />
+          </svg>
+          Connecting...
+        </span>
+      ) : (
+        "Connect Wallet"
+      )}
     </button>
   );
 }

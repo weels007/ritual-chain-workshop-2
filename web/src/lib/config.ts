@@ -2,8 +2,8 @@ import { defineChain } from "viem";
 import { hardhat } from "viem/chains";
 
 export const ritualChain = defineChain({
-  id: 1979,
-  name: "Ritual Chain",
+  id: 31337,
+  name: "Ritual Chain (Local)",
   nativeCurrency: { name: "RITUAL", symbol: "RITUAL", decimals: 18 },
   rpcUrls: {
     default: { http: ["http://127.0.0.1:8545"] },
